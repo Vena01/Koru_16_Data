@@ -278,7 +278,7 @@ summary.table %>%
 
 ```
 
-Modern_lma_site level(wright et al)
+Modern_lma_site level(Lowe et al., 2024)
 
 ```{r}
 modern_lma <- read_excel("modern_lma.xlsx", 
