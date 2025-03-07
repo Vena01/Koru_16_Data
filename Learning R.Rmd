@@ -1,0 +1,1046 @@
+---
+title: "R Markdown"
+author: "Vena"
+date: "2022-12-19"
+output: html_document
+---
+
+#Data Visualization
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(palmerpenguins)
+library(ggthemes)
+library(ggplot2)
+library(gapminder)
+library(forcats)
+library(stringr)
+```
+
+Leaf Vein Density
+
+```{r}
+library(readxl)
+lvd_draft <- read_excel("lvd_draft.xlsx", 
+    sheet = "trials", col_types = c("text", 
+        "text", "numeric", "numeric", "numeric", 
+        "numeric"))
+lvd_draft %>%
+  drop_na() %>% 
+  mean(ln_vs)
+
+####morpho mean  
+  #mean_morpho <- vs %>% 
+    #mutate(as.factor(measurement_area)) %>%
+    #group_by(morphotype) %>% 
+    #summarise( mean_morpho = mean(ln_vs, na.rm = T))
+  ######site mean
+   #site_mean <- mean_morpho %>% 
+    # summarise(site_mean = mean(mean_morpho))
+   
+```
+
+Wilf MAP
+
+```{r}
+ #MAP_wilf <- site_mean %>% 
+  #mutate( map = exp((0.548*site_mean)+ 0.768))
+```
+
+```{r}
+#MAP_peppe <- site_mean %>% 
+  #mutate( map = exp((0.283*site_mean)+ 2.92))
+```
+
+```{r}
+#MAP_jacobs <- site_mean %>% 
+  #mutate( map = exp((0.429*site_mean)+ 1.705))
+```
+
+USE THIS CODE!!!! vs = Its the vein scaling, which represents the area of the site vd = Vein density p_width = petiole width b_area = box area
+
+```{r}
+library(readxl)
+lvd_draft2 <- read_excel("lvd_draft.xlsx", 
+    sheet = "trials", col_types = c("text", 
+        "text", "text", "numeric", "numeric", 
+        "numeric"))
+#####The petiole metric is included here
+###I have manipulated the Merkhofer without the conversion
+vs <- lvd_draft %>% 
+  mutate(length = vein_length*10,
+         p_width = petiole_width*10,
+         b_area = box_area*100,
+         vd = length/b_area) %>% 
+  group_by(field_name, morphotype, petiole_width) %>%
+  mutate(mean_vd = mean(vd)) %>% 
+  ungroup() %>% 
+  mutate(vs = (((10^(1.96-2.04*log10(mean_vd*10)))*100)),
+         ln_vs = log(vs), p.m = (p_width^2)/vs)
+
+if (!requireNamespace("here")) install.packages("here")
+library("here")
+library(openxlsx)
+write.xlsx (vs, here("vs.xls"))
+#######Size Classes
+
+
+sizes <- lvd_draft %>% 
+  mutate(length = vein_length*10,
+         p_width = petiole_width*10,
+         b_area = box_area*100,
+         vd = length/b_area) %>% 
+  group_by(field_name, morphotype, petiole_width) %>%
+  mutate(mean_vd = mean(vd)) %>% 
+  ungroup() %>% 
+  mutate(vs = (((10^(1.96-2.04*log10(mean_vd*10)))*100)),
+         ln_vs = log(vs), p.m = (p_width^2)/vs)%>% 
+  select(field_name, morphotype, vs) %>% 
+  filter(field_name == "TIND-2023" ) %>% 
+  arrange(-vs)
+ 
+###Site MAP 
+  MAP <- vs %>% 
+  group_by(morphotype) %>% 
+    summarise( mean_morpho = mean(ln_vs, na.rm = T)) %>% 
+  summarise(site_mean2 = mean(mean_morpho)) %>% 
+  mutate(map = exp((0.548*site_mean2)+ 0.768))
+
+```
+
+Kiahera & R3
+
+```{r}
+kiahera <- modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "kiahera", col_types = c("text", 
+        "text", "numeric"))
+r3 <- modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "r3", col_types = c("text", 
+        "text", "numeric"))
+```
+
+Site level
+
+```{r}
+##morphotype averages####
+sp.m <- r3 %>%
+  group_by(morphotype) %>%
+  summarise_at(vars(p.m), mean, na.rm=TRUE )
+
+
+##Add sample size
+library(data.table)
+sp.k <- setDT(r3)[, .(k = sum(!is.na(p.m))), morphotype]
+sp.m <- merge(sp.m, sp.k, by = "morphotype")
+sp.m <- filter(sp.m, p.m > 0)
+
+######Calculate site mean#############
+
+site_mean_r3 <- mean(sp.m$p.m, na.rm = T)
+
+#####Calculate site variance#########
+
+site.v.r3 <- var(sp.m$p.m, na.rm = T)
+
+  
+  ####################################
+  ########LMA reconstructions###########
+  ########################################
+  
+  ###Coefficients for calculating 95% prediction intervals, reported in Lowe et al 2024, Table 3
+  s <- 0.01212861
+  n <- 70
+  X <- -2.902972
+  Ex2 <- 1.154691
+  t <- 1.995469
+  
+mean.pm.log <- log10(site.m) #log transform it
+    log.est.lma <- 2.954 + (0.345 * mean.pm.log) #estimate your LMA in log scale
+    est.lma <- 10^(log.est.lma) #back transform to linear scale
+    
+    #Calculate PI
+    upper.PI <- 10^(log.est.lma + sqrt( s * ( (1/k) + (1/n) + (((mean.pm.log -  X)^2) / Ex2)))*t)
+    lower.PI <- 10^(log.est.lma - sqrt( s * ( (1/k) + (1/n) + (((mean.pm.log -  X)^2) / Ex2)))*t)
+    
+summary_lowe <- data.frame(lma=est.lma, upper.PI=upper.PI, lower.PI=lower.PI)
+  
+```
+
+Species level make a box_plot to compare the species distro of evergreen v decidous, see lowe fig. 4
+
+```{r}
+##morphotype averages####
+sp.m <- vs %>%
+  group_by(morphotype) %>%
+  summarise_at(vars(p.m), mean, na.rm=TRUE )
+
+
+##Add sample size
+library(data.table)
+sp.k <- setDT(vs)[, .(k = sum(!is.na(p.m))), morphotype]
+sp.m <- merge(sp.m, sp.k, by = "morphotype")
+sp.m <- filter(sp.m, p.m > 0)
+
+######Calculate site mean#############
+
+site_mean_koru <- mean(sp.m$p.m, na.rm = T)
+
+#####Calculate site variance#########
+
+site.v.koru <- var(sp.m$p.m, na.rm = T)
+
+
+
+####################################
+########LMA reconstructions###########
+########################################
+
+###Coefficients for calculating 95% prediction intervals, reported in Royer et al 2007, Table 2
+s <- 0.032237
+n <- 667
+X <- -3.011
+Ex2 <- 182.1
+t <- 1.964
+
+m <- unique(sp.m$morphotype)
+summary.table <- data.frame()
+
+#Loop
+for (i in 1:length(m)) {
+
+  #isolate morphotype 
+  temp <- sp.m[sp.m$morphotype == m[i],]
+  
+  ###Royer's linear regression
+  mean.pm <- temp$p.m
+  mean.pm.log <- log10(mean.pm) #log transform it
+  log.est.lma <- 3.070 + (0.382 * mean.pm.log) #estimate your LMA in log scale
+  est.lma <- 10^(log.est.lma) #back transform to linear scale
+  
+  #Sample size of our own data
+  k <- temp$k
+    
+  #Calculate PI
+  upper.PI <- 10^(log.est.lma + sqrt( s * ( (1/k) + (1/n) + (((mean.pm.log -  X)^2) / Ex2)))*t)
+  lower.PI <- 10^(log.est.lma - sqrt( s * ( (1/k) + (1/n) + (((mean.pm.log -  X)^2) / Ex2)))*t)
+  
+  #temp summary table
+  temp.summary <- data.frame(morphotype=m[i], est.lma.R=est.lma, upper.PI.R=upper.PI, lower.PI.R=lower.PI)
+  
+  #bind to dataframe outside of loop
+  summary.table <- rbind(summary.table, temp.summary)
+  
+}
+
+summary_lowe <- merge(sp.m, summary.table, by = "morphotype")
+library(openxlsx)
+ # Specify the file path where you want to save the Excel file
+file_path <- "summary_table.xlsx"
+
+# Write the summary table dataframe to an Excel file
+write.xlsx(summary_lowe, file_path, rowNames = FALSE)
+
+# Message to confirm the export
+cat("Summary table exported to", file_path, "\n")
+
+koru<- modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "koru", col_types = c("text", 
+        "numeric", "numeric", "text"))
+  koru %>%
+    ggplot(aes(habit,lma), fill = morphotype) +
+    geom_boxplot() +
+    scale_y_continuous(limits = c(0, 300)) +
+    theme_base()
+  
+```
+
+site variance PI
+
+```{r}
+ ###Coefficients for calculating 95% prediction intervals, reported in Lowe et al 2024, Table 3
+  s <- 0.1713672
+  n <- 70
+  X <- -5.97104
+  Ex2 <- 5.085184
+  t <- 1.995469
+  
+mean.pm.log <- log10(site.v.r3) #log transform it
+    log.est.lma <- 5.028 + (0.302 * mean.pm.log) #estimate your LMA in log scale
+    est.lma <- 10^(log.est.lma) #back transform to linear scale
+    
+    #Calculate PI
+    upper.PI <- 10^(log.est.lma + sqrt( s * ( (1/k) + (1/n) + (((mean.pm.log -  X)^2) / Ex2)))*t)
+    lower.PI <- 10^(log.est.lma - sqrt( s * ( (1/k) + (1/n) + (((mean.pm.log -  X)^2) / Ex2)))*t)
+    
+summary_r3 <- data.frame(lma=est.lma, upper.PI=upper.PI, lower.PI=lower.PI)
+summary_variance <- rbind(summary_koru, summary_kiahera, summary_r3)
+rownames(summary_variance) <- paste0("Site", 1:nrow(summary_variance))
+
+```
+
+```{r}
+site_level<- modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "site_level", col_types = c("text", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric"))
+site_level %>%
+  ggplot(aes(var, lma, color = site)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = lma - lower.PI.m, ymax = lma + upper.PI.m), width = 0.1) +
+  geom_errorbarh(aes(xmin = var - lower.PI.v, xmax = var + upper.PI.v), height = 0.1) +
+  theme_clean()+
+  coord_flip()
+
+geom_errorbar(aes(ymin = est.lma.R - lower.PI.R,
+                    ymax = est.lma.R + upper.PI.R),
+                position = position_dodge(width = 0.25),
+                width = 1)
+```
+
+Leaf_Sizes distribution
+
+```{r}
+library(ggplot2)
+library(hrbrthemes)
+
+ggplot(vs, aes(x = ln_vs, na.rm = TRUE)) +
+  geom_histogram(binwidth = 2, position = "dodge") +
+  theme_clean() + 
+  labs(x = "Species Mean Area ln mm^2",
+       y = "Species Count") 
+
+# Assuming your dataframe is named 'vs'
+  leaf_sizes <- vs %>%
+  mutate(ln_vs_class = if_else(ln_vs > 7.6, "large", "small"))
+ 
+    ggplot(leaf_sizes, aes(x = ln_vs, fill = ln_vs_class)) +
+  geom_histogram(binwidth = 2, position = "identity", alpha = 1) +
+  scale_fill_manual(values = c("large" = "gray", "small" = "black")) +
+  labs(x = "ln_vs",
+       y = "Count",
+       fill = "Category") +
+   guides(fill = "none") +
+  theme_clean()
+
+  ggsave("leaf_sizes.pdf", plot = leaf_sizes, width = 8, height = 6)
+
+
+```
+
+```{r}
+#sum <- modern_lma %>% 
+ # (sum_kibwezi = sum(kibwezi))
+#percent <- mutate(kib = (kibwezi/sum_kibwezi)*100)
+```
+
+Comparative_MAP
+
+```{r}
+library(readxl)
+modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "MAP", col_types = c("text", 
+        "numeric", "numeric", "numeric"))
+ modern_lma %>%
+  rename("method" = "Method") %>%
+  mutate( koru = Koru*10,
+          p_error = p_error*10,
+          n_error = n_error*10) %>% 
+  ggplot(aes(method, koru, shape = method)) +
+  geom_point(size = 5) +
+  geom_errorbar(aes(ymin = koru-n_error,
+                    ymax = koru+p_error),
+                #position = position_dodge(0),
+                width = 0.5) +
+  scale_y_continuous(limits = c(0, 4000)) +
+  theme_clean()
+ 
+#ggsave(modern_lma = "map_fossil.png",map_fossil,
+      # width=5,height=4,units="in")
+
+```
+
+comparative_MAT
+
+```{r}
+modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "MAT", col_types = c("text", 
+        "numeric", "numeric", "numeric"))
+ modern_lma %>%
+  rename("method" = "Method", "koru" = "Koru") %>%
+  ggplot(aes(method, koru, shape = method)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = koru-n_error,
+                    ymax = koru+p_error),
+                #position = position_dodge(0),
+                width = 0.3) +
+  scale_y_continuous(limits = c(0, 30)) +
+  theme_clean()
+```
+
+for_2023
+
+```{r}
+sizes_ <- lvd_draft %>%
+  mutate(
+    length = vein_length * 10,
+    p_width = petiole_width * 10,
+    b_area = box_area * 100,
+    vd = length / b_area
+  ) %>%
+  group_by(field_name, morphotype, petiole_width) %>%
+  mutate(mean_vd = mean(vd, na.rm = TRUE)) %>%  
+  ungroup() %>%
+  mutate(
+    vs = 10^(1.96 - 2.04 * log10(mean_vd * 10)) * 100,
+    ln_vs = log(vs),
+    p.m = (p_width^2) / vs
+  ) %>%
+  select(field_name, morphotype, vs)
+
+part_of_name <- "TIND-2023"
+
+sizes_2023 <- sizes_ %>%
+  filter(str_detect(field_name, part_of_name))
+
+###
+sizes_2023 %>% 
+  filter(morphotype == "morpho_3") %>% 
+  arrange(-vs)
+
+
+```
+
+for 2022
+
+```{r}
+sizes_ <- lvd_draft %>%
+  mutate(
+    length = vein_length * 10,
+    p_width = petiole_width * 10,
+    b_area = box_area * 100,
+    vd = length / b_area
+  ) %>%
+  group_by(field_name, morphotype, petiole_width) %>%
+  mutate(mean_vd = mean(vd, na.rm = TRUE)) %>%  
+  ungroup() %>%
+  mutate(
+    vs = 10^(1.96 - 2.04 * log10(mean_vd * 10)) * 100,
+    ln_vs = log(vs),
+    p.m = (p_width^2) / vs
+  ) %>%
+  select(field_name, morphotype, vs)
+
+part_of_name <- "TIND-2022"
+
+sizes_2022 <- sizes_ %>%
+  filter(str_detect(field_name, part_of_name))
+
+###
+sizes_2022 %>% 
+  filter(morphotype == "morpho_15") %>% 
+  arrange(-vs)
+
+```
+
+```{r}
+# Creating a data frame with three columns: Name, Age, and Score
+name <- c("Alice", "Bob", "Charlie", "Denise")
+age <- c(25, 30, 22, 28)
+score <- c(95, 88, 75, 90)
+
+# Creating the data frame
+my_data <- data.frame(Name = name, Age = age, Score = score)
+
+# Displaying the data frame
+print(my_data)
+
+```
+
+LMA_do a box_plot
+
+```{r}
+summary.table %>%
+  ggplot(aes(x = morphotype, y = est.lma.R, fill = morphotype)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = est.lma.R - lower.PI.R,
+                    ymax = est.lma.R + upper.PI.R),
+                position = position_dodge(width = 0.9),
+                width = 0.25) +
+  labs(title = "",
+       x = "Morphotype",
+       y = "LMA")+
+  theme_clean()
+
+```
+
+```{r}
+summary.table %>%
+  drop_na(morphotype) %>% 
+  ggplot(aes(x = morphotype, y = est.lma.R)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = est.lma.R - lower.PI.R,
+                    ymax = est.lma.R + upper.PI.R),
+                position = position_dodge(width = 0.25),
+                width = 1) +
+  labs(title = "",
+       x = "Morphotype",
+       y = "LMA")+
+  theme_clean()
+
+```
+
+Modern_lma_site level(wright et al)
+
+```{r}
+modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "lma", col_types = c("text", 
+        "numeric", "numeric", "text"))
+modern_lma$habit <- as.factor(modern_lma$habit)
+modern_lma %>%
+  filter(!is.na(habit) & habit != "") %>% 
+  ggplot(aes(y = lma, fill = habit, na.rm = T)) +
+  geom_histogram(bins = 20, position = "dodge") +
+  scale_fill_manual(values = c("black", "gray"))+
+  scale_y_continuous(limits = c(0, 500)) +
+  guides(fill = FALSE) +
+  labs(title = "",
+       x = "Species count (extant)",
+       y = "Leaf mass per area (g/m2)") +
+  theme_clean()
+
+```
+
+Modern_lma_site level(lowe et al)- Measured
+
+```{r}
+
+lowe_modern <- read_excel("lowe_modern.xls", 
+    col_types = c("text", "text", "numeric", 
+        "numeric", "numeric"))
+lowe_modern$habit <- as.factor(lowe_modern$habit)
+lowe_modern %>% 
+  drop_na(lma,p.m) %>% 
+  ggplot(aes(y = lma, fill = habit, na.rm = T)) +
+  geom_histogram(bins = 20, position = "dodge") +
+  scale_fill_manual(values = c("black", "red","darkgreen"))+
+  scale_y_continuous(limits = c(0, 500)) +
+  guides(fill = FALSE)+
+  theme_clean()
+############Boxplot
+ lowe_modern %>%
+    ggplot(aes(habit,lma), fill = morphotype) +
+    geom_boxplot() +
+    theme_base()
+
+
+  
+```
+
+Modern_lma_site level(lowe et al)- Reconstructed
+
+```{r}
+summary_lowe$habit <- as.factor(summary_lowe$habit)
+summary_lowe %>% 
+  drop_na(est.lma.R,p.m) %>% 
+  ggplot(aes(y = est.lma.R, fill = habit, na.rm = T)) +
+  geom_histogram(bins = 20, position = "dodge") +
+  scale_fill_manual(values = c("black", "red","darkgreen"))+
+  scale_y_continuous(limits = c(0, 500)) +
+  guides(fill = FALSE)+
+  theme_clean()
+```
+
+combined_lma_plots
+
+```{r}
+library(gridExtra)
+
+# Plot for modern_lma dataframe
+plot1 <- modern_lma %>%
+  filter(!is.na(habit) & habit != "") %>% 
+  ggplot(aes(y = lma, fill = habit, na.rm = T)) +
+  geom_histogram(bins = 20, position = "dodge") +
+  scale_fill_manual(values = c("black", "gray"))+
+  scale_y_continuous(limits = c(0, 500)) +
+  guides(fill = FALSE) +  # Hide legend
+  theme_clean() +
+  labs(y = "LMA")  # Add y-axis label
+
+# Plot for summary_table dataframe (assuming it's a ggplot object)
+plot2 <- plot2 +
+  # Add other plot specifications here
+  theme_clean()  # Example: setting theme
+
+# Combine plots with common y-axis
+grid.arrange(plot2 + theme(axis.title.y = element_blank()), plot1, ncol = 2, widths = c(2, 1))
+
+
+```
+
+EA_lma
+
+```{r}
+
+lma_distro <- modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "site_level", col_types = c("text", 
+        "numeric", "numeric", "numeric"))
+lma_distro %>% 
+  ggplot(aes(x = site, y = lma)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = lma - lower.PI,
+                    ymax = lma + upper.PI),
+                position = position_dodge(width = 0.25),
+                width = 1) +
+  theme_clean()
+
+```
+
+t-test
+
+```{r}
+
+modern_lma$Method <- as.factor(modern_lma$Method)
+
+
+# Kruskal-Wallis test
+result_kruskal <- kruskal.test(Koru ~ Method, data = modern_lma)
+soil_krustal <- kruskal.test(cao ~ sample, data = soils)
+site_krustal <- kruskal.test(var ~ site, data = site_level)
+# ANOVA test
+result_anova <- aov(Koru ~ Method, data = modern_lma)
+summary(result_anova)
+
+# Fit the ANOVA model
+result_anova <- aov(Koru ~ Method, data = modern_lma)
+
+# Get the summary of the ANOVA
+summary(result_anova)
+
+# Calculate R-squared
+total_ss <- sum((modern_lma$Koru - mean(modern_lma$Koru))^2)
+residual_ss <- sum(residuals(result_anova)^2)
+r_squared <- 1 - (residual_ss / total_ss)
+
+# Print the R-squared value
+print(r_squared)
+```
+
+Rarefaction
+
+```{r}
+
+soils <- modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "soils", col_types = c("text", 
+        "numeric"))
+```
+
+CO2 Trend
+
+```{r}
+library(readxl)
+modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "stomata", col_types = c("numeric", 
+        "numeric", "numeric", "numeric", 
+        "skip"))
+
+modern_lma %>%
+  filter(age >= 14 & age <= 22) %>% 
+  ggplot(aes(x = age, y = ppm), na.rm = T) +
+  geom_point()+
+  geom_line() +
+  coord_flip() +
+  theme_classic() +
+  #scale_y_continuous(breaks = seq(0, max(modern_lma$age), by = 1)) +
+  geom_ribbon(aes(ymin = ppm-ppm_low, 
+                  ymax = ppm+ppm_high),
+                  alpha = 0.3)
+
+
+
+
+  
+```
+
+Diversity Indices
+
+```{r}
+# Install and load the vegan package if not already installed
+if (!requireNamespace("vegan", quietly = TRUE)) {
+  install.packages("vegan")
+}
+library(vegan)
+
+library(readxl)
+modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "inext", col_types = c("skip", 
+        "numeric", "numeric", "numeric"))
+
+#transposed
+transposed <- t(modern_lma)
+
+# Calculate Fisher's alpha diversity
+shannon_diversity <- diversity(transposed, index = "shannon")
+
+# Convert Shannon diversity to Fisher's alpha
+fisher_alpha <- exp(shannon_diversity) - 1
+
+# Print the result
+print(fisher_alpha)
+
+
+
+
+
+################ Function to calculate Margalef's diversity index
+margalef_diversity <- function(S, N) {
+  D <- (S - 1) / log(N)
+  return(D)
+}
+
+# Function to perform bootstrapping
+bootstrap_margalef_diversity <- function(data, n_bootstraps = 10000) {
+  n <- length(data)
+  N <- sum(data)
+  bootstrapped_values <- replicate(n_bootstraps, {
+    sample_data <- sample(data, replace = TRUE)
+    S <- sum(sample_data > 0)
+    return(margalef_diversity(S, N))
+  })
+  return(bootstrapped_values)
+}
+
+# Call the function with your richness data
+bootstrapped_values <- bootstrap_margalef_diversity(modern_lma$combined)
+
+# Calculate the 95% confidence interval
+ci <- quantile(bootstrapped_values, c(0.025, 0.975))
+
+# Print the results
+cat("Margalef's Diversity Estimate:", mean(bootstrapped_values), "\n")
+cat("95% Confidence Interval:", ci[1], "-", ci[2], "\n")
+
+
+
+#########Pielou's Evenness
+
+library(vegan)
+
+# Function to calculate Pielou's evenness
+pielou_evenness <- function(x) {
+  H <- diversity(x, index = "shannon")
+  S <- specnumber(x)
+  J <- H/log(S)
+  return(J)
+}
+
+# Function to perform bootstrapping
+bootstrap_pielou_evenness <- function(data, n_bootstraps = 10000) {
+  n <- length(data)
+  bootstrapped_values <- replicate(n_bootstraps, {
+    sample_data <- sample(data, replace = TRUE)
+    return(pielou_evenness(sample_data))
+  })
+  return(bootstrapped_values)
+}
+
+# Call the function with your abundance data
+
+bootstrapped_values <- bootstrap_pielou_evenness(modern_lma$combined)
+
+# Calculate the 95% confidence interval
+ci <- quantile(bootstrapped_values, c(0.025, 0.975))
+
+# Print the results
+cat("Pielou's Evenness Estimate:", mean(bootstrapped_values), "\n")
+cat("95% Confidence Interval:", ci[1], "-", ci[2], "\n")
+
+
+
+
+#########Berger_parker_bootstrap
+# Function to calculate Berger-Parker dominance index
+berger_parker_index <- function(x) {
+  max_abundance <- max(x)
+  dominance <- max_abundance / sum(x)
+  return(dominance)
+}
+
+# Function to perform bootstrapping
+bootstrap_berger_parker <- function(data, n_bootstraps = 10000) {
+  n <- length(data)
+  bootstrapped_values <- replicate(n_bootstraps, {
+    sample_data <- sample(data, replace = TRUE)
+    return(berger_parker_index(sample_data))
+  })
+  return(bootstrapped_values)
+}
+
+
+# Call the function with your abundance data
+bootstrapped_values <- bootstrap_berger_parker(modern_lma$combined)
+
+# Calculate the 95% confidence interval
+ci <- quantile(bootstrapped_values, c(0.025, 0.975))
+
+# Print the results
+cat("Berger-Parker Dominance Estimate:", mean(bootstrapped_values), "\n")
+cat("95% Confidence Interval:", ci[1], "-", ci[2], "\n")
+
+
+####################Bray_Curtis
+bray_curtis <- vegdist(modern_lma, method = "bray")
+print(bray_curtis)
+
+```
+
+Dilp_function
+
+```{r}
+
+```
+
+iNEXT
+
+```{r}
+install.packages("iNEXT")
+library(iNEXT)
+
+koru_inext <- modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "inext", col_types = c("text", 
+        "numeric", "numeric", "numeric"))
+
+data(spider)
+library(iNEXT)
+inext_result <- na.rm %>% 
+  iNEXT(koru_inext, q = 0, datatype = "abundance", 
+                      size = NULL, endpoint = NULL, knots = 40, 
+                      se = TRUE, conf = 0.95, nboot = 50)
+
+
+ggiNEXT(out, type=1)
+```
+Whittaker Biome plots
+```{r}
+install.packages("devtools")
+library(devtools)
+devtools::install_github("valentinitnelav/plotbiomes") 
+library(plotbiomes)
+
+
+
+library(readxl)
+modern_lma <- read_excel("modern_lma.xlsx", 
+    sheet = "climate", col_types = c("text", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric"))
+
+  whittaker_base_plot() +
+  geom_point(data = modern_lma, 
+             aes(x = temperature, 
+                 y = precipitation,
+                 shape = sites,
+                 color = sites), 
+             size   = 3,
+             shape  = 21,
+             colour = "gray95", 
+             fill   = "black",
+             stroke = 1,
+             alpha  = 0.5) +
+ theme_bw()
+#########
+ koru_biome <- whittaker_base_plot() +
+  geom_point(data = modern_lma,
+             aes(x = temperature,
+                 y = precipitation,
+                 colour = sites),
+             shape = 16,
+             size  = 5) +
+    scale_color_manual(name   = "sites",
+                     breaks = c("koru", "bany", "kibw"),
+                     values = c("koru"  = "black",
+                                "bany" = "red",
+                                "kibw" = "purple"),
+                     labels = c("koru"  = "Koru 16",
+                                "bany" = "Banyang-Mbo, Cameroon ",
+                                "kibw" = "Kibwezi Forest, Kenya")) +
+     theme_bw()
+  ggsave("whittaker2.pdf", plot = koru_biome, width = 8, height = 6)
+  #################
+ modern_lma %>% 
+  
+   ggplot(aes(temperature, precipitation, shape = sites)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = precipitation - n_error, ymax= precipitation + p_error), width=0.2) +
+  geom_errorbarh(aes(xmin= temperature - n_error_h, xmax = temperature + p_error_h), height=0.2) + 
+    scale_x_continuous(limits = c(10, 30))
+  theme_minimal()
+
+################Sondu
+
+ library(readxl)
+library(readxl)
+sondu_paleosols <- read_excel("sondu_paleosols.xlsx", 
+    sheet = "Sheet1", col_types = c("text", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric"))
+View(sondu_paleosols)
+
+ 
+  whittaker_base_plot() +
+  geom_point(data = sondu_paleosols, 
+             aes(x = mat, 
+                 y = precipitation), 
+             size   = 3,
+             shape  = 21,
+             colour = "gray95", 
+             fill   = "black",
+             stroke = 1,
+             alpha  = 0.5) +
+  theme_classic()
+
+###############  
+  whittaker_base_plot() +
+  geom_point(data = sondu_paleosols, 
+             aes(x = mat, 
+                 y = precipitation) +
+               geom_errorbar(aes(ymin = precipitation - error, ymax = precipitation + error), width=0.2) +
+  geom_errorbarh(aes(xmin = mat - error_t, xmax = temperature + error_t), height=0.2), 
+             size   = 3,
+             shape  = 21,
+             colour = "gray95", 
+             fill   = "black",
+             stroke = 1,
+             alpha  = 0.5) +
+
+    whittaker.MLR <- subset(sondu_paleosols, select = c("sample", "mat", "error_t", "precipitation", "error"))   
+    
+  plot.MLR <- whittaker_base_plot () +
+  geom_point(data = whittaker.MLR, size = 3, aes (x = mat, y = precipitation)) + 
+    geom_errorbar(data = whittaker.MLR, aes(x= mat, y = precipitation, ymin = precipitation - error, ymax = precipitation + error), 
+                  width = 1) +
+geom_errorbarh(data = whittaker.MLR, aes(y = precipitation, xmin = mat - error_t, xmax = mat + error_t), height = 10) +
+    theme_classic() 
+   ggsave("sondu_biome_2.pdf", plot = plot.MLR, width = 8, height = 6)
+```
+xrd
+
+```{r}
+library(readxl)
+kadianga <- nyakach_xrd <- read_excel("~/Desktop/nyakach_xrd.xlsx", 
+    sheet = "kadianga", col_types = c("numeric", 
+        "numeric"))
+kadianga %>% 
+  drop_na(angle) %>% 
+  ggplot(aes(angle,intensity)) +
+  geom_line() +
+  scale_x_continuous(limits = c(2, 40)) +
+    theme_classic() +
+   labs(y = "Intensity",
+       x = expression(2*theta))
+  
+
+pundo <- nyakach_xrd <- read_excel("~/Desktop/nyakach_xrd.xlsx", 
+    col_types = c("numeric", "numeric"))
+
+pundo %>% 
+  drop_na(angle) %>% 
+  ggplot(aes(angle,intensity)) +
+  geom_line() +
+  scale_x_continuous(limits = c(2, 40)) +
+    theme_classic() +
+  labs(y = "Intensity",
+       x = expression(2*theta))
+
+kapletet_2 <- nyakach_xrd <- read_excel("~/Desktop/nyakach_xrd.xlsx", 
+    sheet = "kaplatet_2", col_types = c("numeric", 
+        "numeric"))
+kapletet_2 %>% 
+  drop_na(angle) %>% 
+  ggplot(aes(angle,intensity)) +
+  geom_line() +
+  scale_x_continuous(limits = c(2, 40)) +
+    theme_classic() +
+  labs(y = "Intensity",
+       x = expression(2*theta))
+
+kapletet_5 <- nyakach_xrd <- read_excel("~/Desktop/nyakach_xrd.xlsx", 
+    sheet = "kapletet_5", col_types = c("numeric", 
+        "numeric"))
+kapletet_5 %>% 
+  drop_na(angle) %>% 
+  ggplot(aes(angle,intensity)) +
+  geom_line() +
+  scale_x_continuous(limits = c(2, 40)) +
+    theme_classic() +
+  labs(y = "Intensity",
+       x = expression(2*theta))
+
+kamogon_1 <- nyakach_xrd <- read_excel("~/Desktop/nyakach_xrd.xlsx", 
+    sheet = "kamogon_1", col_types = c("numeric", 
+        "numeric"))
+kamogon_1 %>% 
+  drop_na(angle) %>% 
+  ggplot(aes(angle,intensity)) +
+  geom_line() +
+  scale_x_continuous(limits = c(2, 40)) +
+    theme_classic() +
+  labs(y = "Intensity",
+       x = expression(2*theta))
+
+kaimoroon_1 <- nyakach_xrd <- read_excel("~/Desktop/nyakach_xrd.xlsx", 
+    sheet = "kaimoroon_1", col_types = c("numeric", 
+        "numeric"))
+kaimoroon_1 %>% 
+  drop_na(angle) %>% 
+  ggplot(aes(angle,intensity)) +
+  geom_line() +
+  scale_x_continuous(limits = c(2, 40)) +
+    theme_classic() +
+  labs(y = "Intensity",
+       x = expression(2*theta))
+
+kaimoroon_4 <- nyakach_xrd <- read_excel("~/Desktop/nyakach_xrd.xlsx", 
+    sheet = "kaimoroon_4", col_types = c("numeric", 
+        "numeric"))
+kaimoroon_4 %>% 
+  drop_na(angle) %>% 
+  ggplot(aes(angle,intensity)) +
+  geom_line() +
+  scale_x_continuous(limits = c(2, 40)) +
+    theme_classic() +
+  labs(y = "Intensity",
+       x = expression(2*theta))
+
+chepetet_5 <- nyakach_xrd <- read_excel("~/Desktop/nyakach_xrd.xlsx", 
+    sheet = "chepetet_5", col_types = c("numeric", 
+        "numeric"))
+chepetet_5 %>% 
+  drop_na(angle) %>% 
+  ggplot(aes(angle,intensity)) +
+  geom_line() +
+  scale_x_continuous(limits = c(2, 40)) +
+    theme_classic() +
+  labs(y = "Intensity",
+       x = expression(2*theta))
+
+chepetet_3 <- nyakach_xrd <- read_excel("~/Desktop/nyakach_xrd.xlsx", 
+    sheet = "chepetet_3", col_types = c("numeric", 
+        "numeric"))
+chepetet_3 %>% 
+  drop_na(angle) %>% 
+  ggplot(aes(angle,intensity)) +
+  geom_line() +
+  scale_x_continuous(limits = c(2, 40)) +
+    theme_classic() +
+  labs(y = "Intensity",
+       x = expression(2*theta))
+
+```
+
