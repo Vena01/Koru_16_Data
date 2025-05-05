@@ -516,6 +516,8 @@ library(plotbiomes)
     scale_x_continuous(limits = c(10, 30))
   theme_minimal()
 
+```
+
 ###Read data from Miocene Model Intercomparison Project 1 (MioMIP1) dataset (Acosta et al., 2024)
 
 ```{r}
