@@ -332,6 +332,8 @@ print(r_squared)
 
 CO2 Trend
 
+#Read data from CO2-PIP proxy dataset (Montañez et al., 2024)
+
 ```{r}
 library(readxl)
 modern_lma <- read_excel("modern_lma.xlsx", 
