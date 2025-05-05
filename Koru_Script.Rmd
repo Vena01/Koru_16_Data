@@ -73,6 +73,7 @@ sizes <- lvd_draft %>%
 ########LMA reconstructions###########
 ########################################
 
+```{r}
 ###Coefficients for calculating 95% prediction intervals, reported in Royer et al 2007, Table 2
 s <- 0.032237
 n <- 667
