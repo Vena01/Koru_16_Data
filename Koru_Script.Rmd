@@ -278,7 +278,7 @@ summary.table %>%
 
 ```
 
-Modern_lma_site level(Lowe et al., 2024)
+Modern_lma_site level(Lowe et al., 2025)
 
 ```{r}
 modern_lma <- read_excel("modern_lma.xlsx", 
@@ -513,4 +513,70 @@ library(plotbiomes)
     scale_x_continuous(limits = c(10, 30))
   theme_minimal()
 
+```{r}
+#Read_Coordinates
+koru_lat <- 0.6012
+koru_lon <- 37.3522
+# Load libraries
+library(ncdf4)
 
+# --- 1. Open NetCDF files ---
+ncfile280 <- nc_open()
+ncfile400 <- nc_open()
+ncfile560 <- nc_open()
+ncfile850 <- nc_open()
+
+# Find nearest index function
+find_nearest <- function(modelcoords, datacoord) {
+  which.min(abs(modelcoords - datacoord))
+}
+
+# Load your model lat/lon grid
+modellons <- seq(0, 359, length.out = 360)
+modellats <- seq(-90, 90, length.out = 181)
+
+# Find nearest model grid point
+lon_idx <- find_nearest(modellons, koru_lon)
+lat_idx <- find_nearest(modellats, koru_lat)
+
+# Extraction function for Koru MAP
+extract_koru_MAP <- function(pr_array) {
+  n_exp <- dim(pr_array)[4]  # 8 experiments
+  
+  koru_vals <- numeric(n_exp)
+  
+  for (ex in 1:n_exp) {
+    pr_monthly <- pr_array[lon_idx, lat_idx, , ex]  # Correct dimension order
+    
+    if (length(pr_monthly) == 12) {
+      koru_annual <- mean(pr_monthly, na.rm = TRUE)  # mean over 12 months
+      koru_vals[ex] <- koru_annual
+    } else {
+      koru_vals[ex] <- NA
+    }
+  }
+  
+  return(koru_vals)
+}
+
+# Now apply to your arrays
+koru_MAP_280 <- extract_koru_MAP(pr280)
+koru_MAP_400 <- extract_koru_MAP(pr400)
+koru_MAP_560 <- extract_koru_MAP(pr560)
+koru_MAP_850 <- extract_koru_MAP(pr850)
+
+# Combine into a data.frame
+koru_MAP_summary <- data.frame(
+  Experiment = c("MMIO280", "MMIO400", "MMIO560", "MMIO850"),
+  Mean_MAP_mm = c(
+    mean(koru_MAP_280, na.rm = TRUE),
+    mean(koru_MAP_400, na.rm = TRUE),
+    mean(koru_MAP_560, na.rm = TRUE),
+    mean(koru_MAP_850, na.rm = TRUE)
+  )
+)
+
+# Print nicely
+print(koru_MAP_summary)
+
+```
